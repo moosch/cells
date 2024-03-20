@@ -5,28 +5,38 @@ import "core:math/rand"
 import SDL "vendor:sdl2"
 import SDL_Image "vendor:sdl2/image"
 
-WIN_FLAGS :: SDL.WINDOW_SHOWN
-RENDER_FLAGS :: SDL.RENDERER_ACCELERATED
+WIN_FLAGS         :: SDL.WINDOW_SHOWN
+RENDER_FLAGS      :: SDL.RENDERER_ACCELERATED
 FRAMES_PER_SECOND : f64 : 60
-TARGET_DT_S :: f64(1000) / FRAMES_PER_SECOND
-WIN_WIDTH :: 1600
-WIN_HEIGHT :: 960
-SHOW_HITBOXES :: false
+TARGET_DT_S       :: f64(1000) / FRAMES_PER_SECOND
+WIN_WIDTH         :: 800
+WIN_HEIGHT        :: 650
+SHOW_HITBOXES     :: false
+
+TILE_SIZE    :: 10
+
+STAGE_WIDTH  :: WIN_WIDTH / TILE_SIZE
+STAGE_HEIGHT :: WIN_HEIGHT / TILE_SIZE
 
 int_rand : rand.Rand
-
 
 Game :: struct
 {
     renderer       : ^SDL.Renderer,
+    stage          : [STAGE_WIDTH * STAGE_HEIGHT]int,
     perf_frequency : f64,
 }
 
+Vec4 :: [4]u8
+
 Cell :: struct
 {
-    dest : SDL.Rect,
+    dest   : SDL.Rect,
+    color  : Vec4,
+    health : int,
+    alive  : bool,
 }
-cells : [100]Cell
+cells : [STAGE_WIDTH * STAGE_HEIGHT]Cell
 
 game := Game{}
 
@@ -55,18 +65,31 @@ main :: proc()
 	SDL.RenderSetLogicalSize(game.renderer, WIN_WIDTH, WIN_HEIGHT)
 
 
-    for i in 0..<100
+    /*
+    01234
+    56789
+    */
+
+    // Total tiles: 5200
+    cell_count := cast(f32)len(cells)
+    for j in 0..<STAGE_HEIGHT
     {
-        cells[i] = Cell{
-            SDL.Rect{
-                cast(i32)rand.float64_range(0, WIN_WIDTH),
-                cast(i32)rand.float64_range(0, WIN_HEIGHT),
-                5,
-                5,
-            },
+        for i in 0..<STAGE_WIDTH
+        {
+            c := cast(u8)( cast(f32)((j * STAGE_WIDTH) + i ) / cell_count * 255 )
+            cells[((j * STAGE_WIDTH) + i )] = Cell{
+                SDL.Rect{
+                    cast(i32)((i+1) * TILE_SIZE),
+                    cast(i32)((j+1) * TILE_SIZE),
+                    TILE_SIZE, TILE_SIZE,
+                },
+                Vec4{c, c, c, 100},
+                3, true,
+            }
         }
     }
 
+    // cast(i32)rand.float64_range(0, WIN_WIDTH),
 
     game.perf_frequency = f64(SDL.GetPerformanceFrequency())
     start : f64
@@ -90,10 +113,13 @@ main :: proc()
         }
 
 
-        for i in 0..<len(cells)
-        {
-            render_hitbox(&cells[i].dest)
-        }
+        //for i in 0..<len(cells)
+        //{
+        //    render_hitbox(&cells[i].dest)
+        //}
+
+        update_cells()
+        render_cells()
 
 
         end = get_time()
@@ -109,6 +135,61 @@ main :: proc()
 
         SDL.RenderClear(game.renderer)
     }
+}
+
+update_cells :: proc()
+{
+    for i in 0..<len(cells)
+    {
+        // @todo(moosch): implement rules
+        
+    }
+}
+
+render_cells ::proc()
+{
+    for j in 0..<STAGE_HEIGHT
+    {
+        for i in 0..<STAGE_WIDTH
+        {
+            dest := &cells[((j * STAGE_WIDTH) + i )].dest
+            c := cells[((j * STAGE_WIDTH) + i )].color
+            r := SDL.Rect{
+                dest.x,
+                dest.y,
+                dest.w,
+                dest.h,
+            }
+            SDL.SetRenderDrawColor(game.renderer, c[0], c[1], c[2], 100)
+            SDL.RenderDrawRect(game.renderer, &r)
+        }
+    }
+    /* for i in 0..<len(cells)
+    {
+        if cells[i].alive == true
+        {
+            dest := &cells[i].dest
+            r := SDL.Rect{
+                dest.x,
+                dest.y,
+                dest.w,
+                dest.h,
+            }
+            SDL.SetRenderDrawColor(game.renderer, 255, 255, 255, 100)
+            SDL.RenderDrawRect(game.renderer, &r)
+
+            /* {
+                r := SDL.Rect{
+                    dest.x + 5,
+                    dest.y + 5,
+                    dest.w,
+                    dest.h,
+                }
+                SDL.SetRenderDrawColor(game.renderer, 255, 0, 0, 100)
+                SDL.RenderDrawRect(game.renderer, &r)
+            } */
+        }
+    } */
 }
 
 render_hitbox :: proc(dest: ^SDL.Rect)
