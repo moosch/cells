@@ -7,16 +7,17 @@ import SDL_Image "vendor:sdl2/image"
 
 WIN_FLAGS         :: SDL.WINDOW_SHOWN
 RENDER_FLAGS      :: SDL.RENDERER_ACCELERATED
-FRAMES_PER_SECOND : f64 : 60
+FRAMES_PER_SECOND :  f64 : 60
 TARGET_DT_S       :: f64(1000) / FRAMES_PER_SECOND
 WIN_WIDTH         :: 800
 WIN_HEIGHT        :: 650
-SHOW_HITBOXES     :: false
 
 TILE_SIZE    :: 10
 
 STAGE_WIDTH  :: WIN_WIDTH / TILE_SIZE
 STAGE_HEIGHT :: WIN_HEIGHT / TILE_SIZE
+
+FRAME_COUNTDOWN :: 50
 
 int_rand : rand.Rand
 
@@ -29,16 +30,28 @@ Game :: struct
 
 Vec4 :: [4]u8
 
+Neighbour_Positions :: enum{ Top, Right, Bottom, Left }
+
+Dead       : f32 : 0.0
+Bad        : f32 : 0.25
+Ok         : f32 : 0.5
+Well       : f32 : 0.75
+Respawning : f32 : 0.9
+Alive      : f32 : 1.0
+
+Health :: enum{Dead, Bad, Ok, Well, Respawning, Alive}
+
 Cell :: struct
 {
     dest   : SDL.Rect,
     color  : Vec4,
-    health : int,
-    alive  : bool,
+    health : Health,
 }
 cells : [STAGE_WIDTH * STAGE_HEIGHT]Cell
 
 game := Game{}
+
+cells_len : int
 
 main :: proc()
 {
@@ -64,19 +77,23 @@ main :: proc()
 
 	SDL.RenderSetLogicalSize(game.renderer, WIN_WIDTH, WIN_HEIGHT)
 
-
-    /*
-    01234
-    56789
-    */
-
-    // Total tiles: 5200
-    cell_count := cast(f32)len(cells)
+    cells_len = len(cells)
+    assert(STAGE_WIDTH * STAGE_HEIGHT <= cells_len)
     for j in 0..<STAGE_HEIGHT
     {
         for i in 0..<STAGE_WIDTH
         {
-            c := cast(u8)( cast(f32)((j * STAGE_WIDTH) + i ) / cell_count * 255 )
+            health : Health
+            if rand_bool(3)
+            {
+                health = Health.Alive
+            }
+            else
+            {
+                health = Health.Dead
+            }
+            //c := cast(u8)( cast(f32)((j * STAGE_WIDTH) + i ) / cast(f32)cells_len * 255 )
+            c : u8 = 255
             cells[((j * STAGE_WIDTH) + i )] = Cell{
                 SDL.Rect{
                     cast(i32)((i+1) * TILE_SIZE),
@@ -84,12 +101,10 @@ main :: proc()
                     TILE_SIZE, TILE_SIZE,
                 },
                 Vec4{c, c, c, 100},
-                3, true,
+                health,
             }
         }
     }
-
-    // cast(i32)rand.float64_range(0, WIN_WIDTH),
 
     game.perf_frequency = f64(SDL.GetPerformanceFrequency())
     start : f64
@@ -97,6 +112,8 @@ main :: proc()
 
     event : SDL.Event
     state : [^]u8
+
+    frame_render_countdown := FRAME_COUNTDOWN
 
     game_loop : for
     {
@@ -112,92 +129,209 @@ main :: proc()
             }
         }
 
-
-        //for i in 0..<len(cells)
-        //{
-        //    render_hitbox(&cells[i].dest)
-        //}
-
-        update_cells()
-        render_cells()
-
-
-        end = get_time()
-        for end - start < TARGET_DT_S
+        if frame_render_countdown == 0
         {
-            end = get_time()
+            // move_cells()
+            update_cells()
+            frame_render_countdown = FRAME_COUNTDOWN
         }
-
+        render_cells()
 
         SDL.RenderPresent(game.renderer)
 
         SDL.SetRenderDrawColor(game.renderer, 0, 0, 0, 100)
 
         SDL.RenderClear(game.renderer)
+
+        end = get_time()
+        // fmt.printf("Time: %f\n", end - start) // 0.120
+        for end - start < TARGET_DT_S
+        {
+            end = get_time()
+        }
+        frame_render_countdown = frame_render_countdown - 1
     }
 }
 
 update_cells :: proc()
 {
-    for i in 0..<len(cells)
+    for j in 0..<STAGE_HEIGHT
     {
-        // @todo(moosch): implement rules
-        
+        for i in 0..<STAGE_WIDTH
+        {
+            idx := ((j * STAGE_WIDTH) + i)
+
+            cell := &cells[idx]
+
+            // Skip Alive
+            if cell.health == Health.Alive do continue
+
+            rect := SDL.Rect{
+                cell.dest.x,                    
+                cell.dest.y,                    
+                cell.dest.w,                    
+                cell.dest.h,                    
+            }
+            has_neighbour := false
+            {
+                _cell, ok := get_cell(j - 1, i).?
+                if ok && is_alive(_cell.health) do has_neighbour = true
+            }
+            {
+                _cell, ok := get_cell(j, i + 1).?
+                if ok && is_alive(_cell.health) do has_neighbour = true
+            }
+            {
+                _cell, ok := get_cell(j + 1, i).?
+                if ok && is_alive(_cell.health) do has_neighbour = true
+            }
+            {
+                _cell, ok := get_cell(j, i - 1).?
+                if ok && is_alive(_cell.health) do has_neighbour = true
+            }
+
+            if has_neighbour
+            {
+                cell.health = increase_health(cell.health)
+            }
+            else
+            {
+                cell.health = decrease_health(cell.health)
+            }
+        }
     }
 }
 
-render_cells ::proc()
+render_cell :: proc(rect : ^SDL.Rect, color : Vec4, health : Health)
+{
+    c := color
+    switch health
+    {
+        case Health.Alive:
+            c = Vec4{ 55, 163, 16, 100 }
+        case Health.Well:
+            c = Vec4{ 26, 158, 161, 100 }
+        case Health.Ok:
+            c = Vec4{ 53, 49, 181, 100 }
+        case Health.Bad:
+            c = Vec4{ 186, 43, 174, 100 }
+        case Health.Respawning:
+        case Health.Dead:
+            c = Vec4{ 189, 45, 57, 100 }
+    }
+    SDL.SetRenderDrawColor(game.renderer, c[0], c[1], c[2], c[3])
+    SDL.RenderDrawRect(game.renderer, rect)
+}
+
+get_cell :: proc(j, i : int) -> Maybe(^Cell)
+{
+    if j < 0 || j >= STAGE_HEIGHT do return nil
+
+    if i < 0 || i >= STAGE_WIDTH do return nil
+
+    idx := ((j * STAGE_WIDTH) + i)
+    return &cells[idx]
+}
+
+render_cells :: proc()
+{
+    for i in 0..<len(cells)
+    {
+        if cells[i].health == Health.Dead || cells[i].health == Health.Respawning
+        {
+            continue
+        }
+        cell := &cells[i]
+        render_cell(&cell.dest, cell.color, cell.health)
+    }
+}
+
+move_cell :: proc(j, i : int)
+{
+    does_move := rand_bool(3)
+
+    if does_move == true
+    {
+        // Random range for 4 move locations
+        pos := rand_position()
+        // Check if cell already exists there
+        cell, ok := get_cell(j, i).?
+        if ok
+        {
+            // If cell is dead, move to that cell
+            if cell.health == Health.Dead
+            {
+                // Set new position to current cell
+                new_cell := copy_cell(cell)
+                cell = &Cell{
+                    cell.dest,
+                    cell.color,
+                    Health.Dead,
+                }
+                // Set current cell to dead
+            }
+        }
+    }
+}
+move_cells :: proc()
 {
     for j in 0..<STAGE_HEIGHT
     {
         for i in 0..<STAGE_WIDTH
         {
-            dest := &cells[((j * STAGE_WIDTH) + i )].dest
-            c := cells[((j * STAGE_WIDTH) + i )].color
-            r := SDL.Rect{
-                dest.x,
-                dest.y,
-                dest.w,
-                dest.h,
-            }
-            SDL.SetRenderDrawColor(game.renderer, c[0], c[1], c[2], 100)
-            SDL.RenderDrawRect(game.renderer, &r)
+            idx := ((j * STAGE_WIDTH) + i)
+            move_cell(j, i)
         }
     }
-    /* for i in 0..<len(cells)
-    {
-        if cells[i].alive == true
-        {
-            dest := &cells[i].dest
-            r := SDL.Rect{
-                dest.x,
-                dest.y,
-                dest.w,
-                dest.h,
-            }
-            SDL.SetRenderDrawColor(game.renderer, 255, 255, 255, 100)
-            SDL.RenderDrawRect(game.renderer, &r)
-
-            /* {
-                r := SDL.Rect{
-                    dest.x + 5,
-                    dest.y + 5,
-                    dest.w,
-                    dest.h,
-                }
-                SDL.SetRenderDrawColor(game.renderer, 255, 0, 0, 100)
-                SDL.RenderDrawRect(game.renderer, &r)
-            } */
-        }
-    } */
 }
 
-render_hitbox :: proc(dest: ^SDL.Rect)
+increase_health :: proc(health : Health) -> Health
 {
-	r := SDL.Rect{ dest.x, dest.y, dest.w, dest.h }
+    new_health := health
+    // Introduce chance of bad things happening
+    if rand_bool(4) == true
+    {
+        return Health.Dead
+    }
 
-	SDL.SetRenderDrawColor(game.renderer, 255, 255, 255, 100)
-	SDL.RenderDrawRect(game.renderer, &r)
+    if rand_bool(35) == true
+    {
+        switch health
+        {
+            case Health.Well:
+                new_health = Health.Alive
+            case Health.Ok:
+                new_health = Health.Well
+            case Health.Bad:
+                new_health = Health.Ok
+            case Health.Respawning:
+                new_health = Health.Bad
+            case Health.Dead:
+                if rand_bool(5) == true do new_health = Health.Respawning
+            case Health.Alive:
+                break
+        }
+    }
+    return new_health
+}
+decrease_health :: proc(health : Health) -> Health
+{
+    new_health : Health
+    switch health
+    {
+        case Health.Alive:
+            new_health = Health.Well
+        case Health.Well:
+            new_health = Health.Ok
+        case Health.Ok:
+            new_health = Health.Bad
+        case Health.Bad:
+        case Health.Respawning:
+        case Health.Dead:
+            new_health = Health.Dead
+            break
+    }
+    return new_health
 }
 
 get_time :: proc() -> f64
@@ -210,8 +344,42 @@ collision :: proc(x1, y1, w1, h1, x2, y2, w2, h2: i32) -> bool
 	return (max(x1, x2) < min(x1 + w1, x2 + w2)) && (max(y1, y2) < min(y1 + h1, y2 + h2))
 }
 
+// UTILITIES
+
+rand_bool :: proc(weight : int) -> bool
+{
+    return cast(int)rand.float64_range(0, 100) < weight 
+}
+
+rand_position_choices: [4]int = { 0, 1, 2, 3 }
+rand_position :: proc() -> int
+{
+    return rand.choice(rand_position_choices[:])
+}
+
 get_random_int :: proc() -> int
 {
 	return int(rand.uint32(&int_rand))
+}
+
+copy_cell :: proc(cell : ^Cell) -> Cell
+{
+    return Cell{
+        SDL.Rect{},
+        Vec4{cell.color[0], cell.color[1], cell.color[2], cell.color[3]},
+        cell.health,
+    }
+}
+
+is_alive :: proc(health : Health) -> bool
+{
+    if health == Health.Respawning || health == Health.Dead
+    {
+        return false
+    }
+    else
+    {
+        return true
+    }
 }
 
