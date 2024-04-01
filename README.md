@@ -2,7 +2,7 @@
 
 Experiments with the Odin language and cells. Think Conway's Game Of Live, but without the set rules, with my own rules and fun instead.
 
-![screenshot](screenshot.png)
+![screenshot](https://github.com/moosch/cells/blob/main/screebshot.png?raw=true)
 
 ## Rules
 
