@@ -2,6 +2,8 @@
 
 Experiments with the Odin language and cells. Think Conway's Game Of Live, but without the set rules, with my own rules and fun instead.
 
+![screenshot](screenshot.png)
+
 ## Rules
 
 Cells are initially spawned randomly using a weighted random function (should be tweakable at some point).
