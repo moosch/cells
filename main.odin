@@ -21,6 +21,13 @@ FRAME_COUNTDOWN :: 50
 
 int_rand : rand.Rand
 
+neighbour_choice_ints : [4]int = {0, 1, 2, 3}
+
+// Top    = 0
+// Right  = 1
+// Bottom = 2
+// Left   = 3
+
 Game :: struct
 {
     renderer       : ^SDL.Renderer,
@@ -30,7 +37,7 @@ Game :: struct
 
 Vec4 :: [4]u8
 
-Neighbour_Positions :: enum{ Top, Right, Bottom, Left }
+Neighbour_Position :: enum{ Top, Right, Bottom, Left }
 
 Dead       : f32 : 0.0
 Bad        : f32 : 0.25
@@ -131,7 +138,7 @@ main :: proc()
 
         if frame_render_countdown == 0
         {
-            // move_cells()
+            move_cells()
             update_cells()
             frame_render_countdown = FRAME_COUNTDOWN
         }
@@ -174,19 +181,19 @@ update_cells :: proc()
             }
             has_neighbour := false
             {
-                _cell, ok := get_cell(j - 1, i).?
+                _cell, ok := get_cell_top(j, i).?
                 if ok && is_alive(_cell.health) do has_neighbour = true
             }
             {
-                _cell, ok := get_cell(j, i + 1).?
+                _cell, ok := get_cell_right(j, i).?
                 if ok && is_alive(_cell.health) do has_neighbour = true
             }
             {
-                _cell, ok := get_cell(j + 1, i).?
+                _cell, ok := get_cell_bottom(j, i).?
                 if ok && is_alive(_cell.health) do has_neighbour = true
             }
             {
-                _cell, ok := get_cell(j, i - 1).?
+                _cell, ok := get_cell_left(j, i).?
                 if ok && is_alive(_cell.health) do has_neighbour = true
             }
 
@@ -223,16 +230,6 @@ render_cell :: proc(rect : ^SDL.Rect, color : Vec4, health : Health)
     SDL.RenderDrawRect(game.renderer, rect)
 }
 
-get_cell :: proc(j, i : int) -> Maybe(^Cell)
-{
-    if j < 0 || j >= STAGE_HEIGHT do return nil
-
-    if i < 0 || i >= STAGE_WIDTH do return nil
-
-    idx := ((j * STAGE_WIDTH) + i)
-    return &cells[idx]
-}
-
 render_cells :: proc()
 {
     for i in 0..<len(cells)
@@ -248,31 +245,43 @@ render_cells :: proc()
 
 move_cell :: proc(j, i : int)
 {
-    does_move := rand_bool(3)
-
-    if does_move == true
+    if rand_bool(3) == true
     {
-        // Random range for 4 move locations
-        pos := rand_position()
+        // Random rance for 4 move locations
+        pos := rand_neighbour_position()
+        cell : ^Cell
         // Check if cell already exists there
-        cell, ok := get_cell(j, i).?
-        if ok
+        switch pos {
+        case Neighbour_Position.Top:
+            cell, ok := get_cell_top(j, i).?
+            if !ok do break
+        case Neighbour_Position.Right:
+            cell, ok := get_cell_right(j, i).?
+            if !ok do break
+        case Neighbour_Position.Bottom:
+            cell, ok := get_cell_bottom(j, i).?
+            if !ok do break
+        case Neighbour_Position.Left:
+            cell, ok := get_cell_left(j, i).?
+            if !ok do break
+        }
+
+        if cell != nil && cell.health == Health.Dead
         {
-            // If cell is dead, move to that cell
-            if cell.health == Health.Dead
-            {
-                // Set new position to current cell
-                new_cell := copy_cell(cell)
-                cell = &Cell{
-                    cell.dest,
-                    cell.color,
-                    Health.Dead,
-                }
-                // Set current cell to dead
+            _j, _i := get_cell_neighbour_coords(i, j, pos)
+            // Set new position to current cell
+            new_cell := copy_cell(cell)
+            cell = &Cell{
+                cell.dest,
+                cell.color,
+                Health.Dead,
             }
+            // Set current cell to dead
+            fmt.println("Move")
         }
     }
 }
+
 move_cells :: proc()
 {
     for j in 0..<STAGE_HEIGHT
@@ -346,15 +355,73 @@ collision :: proc(x1, y1, w1, h1, x2, y2, w2, h2: i32) -> bool
 
 // UTILITIES
 
+get_cell_top :: proc(j, i : int) -> Maybe(^Cell)
+{
+    return get_cell(j - 1, i)
+}
+get_cell_right :: proc(j, i : int) -> Maybe(^Cell)
+{
+    return get_cell(j, i + 1)
+}
+get_cell_bottom :: proc(j, i : int) -> Maybe(^Cell)
+{
+    return get_cell(j + 1, i)
+}
+get_cell_left :: proc(j, i : int) -> Maybe(^Cell)
+{
+    return get_cell(j, i - 1)
+}
+get_cell :: proc(j, i : int) -> Maybe(^Cell)
+{
+    if j < 0 || j >= STAGE_HEIGHT do return nil
+
+    if i < 0 || i >= STAGE_WIDTH do return nil
+
+    idx := ((j * STAGE_WIDTH) + i)
+    return &cells[idx]
+}
+
+get_cell_neighbour_coords :: proc(i, j : int, p : Neighbour_Position) -> (int, int)
+{
+    _j, _i : int
+    switch p
+    {
+        case Neighbour_Position.Top:
+            _j = j - 1
+            _i = i
+        case Neighbour_Position.Right:
+            _j = j
+            _i = i + 1
+        case Neighbour_Position.Bottom:
+            _j = j + 1
+            _i = i
+        case Neighbour_Position.Left:
+        case:
+            _j = j
+            _i = i - 1
+    }
+    return _j, _i
+}
+
+rand_neighbour_position :: proc() -> Neighbour_Position
+{
+    p := rand.choice(neighbour_choice_ints[:])
+    pos : Neighbour_Position
+    switch p
+    {
+        case 0:
+            return Neighbour_Position.Top
+        case 1:
+            return Neighbour_Position.Right
+        case 2:
+            return Neighbour_Position.Bottom
+    }
+    return Neighbour_Position.Left
+}
+
 rand_bool :: proc(weight : int) -> bool
 {
     return cast(int)rand.float64_range(0, 100) < weight 
-}
-
-rand_position_choices: [4]int = { 0, 1, 2, 3 }
-rand_position :: proc() -> int
-{
-    return rand.choice(rand_position_choices[:])
 }
 
 get_random_int :: proc() -> int
@@ -373,13 +440,6 @@ copy_cell :: proc(cell : ^Cell) -> Cell
 
 is_alive :: proc(health : Health) -> bool
 {
-    if health == Health.Respawning || health == Health.Dead
-    {
-        return false
-    }
-    else
-    {
-        return true
-    }
+    return health != Health.Respawning && health != Health.Dead
 }
 

@@ -16,3 +16,8 @@ Currently, cells spread like bacteria a bit. Some do die by chance, but eventual
 - [ ] "learning", so they know to avoid certain zones
 - [ ] Clusters of a certain size start to decay? Need to check more than nearest neighbours. Maybe something like each cell has a "cluster_size".
 
+## Improvements
+
+- [ ] Compress multiple `j, i` loops into a single loop
+- [ ] Display frames per second and frame render times
+
